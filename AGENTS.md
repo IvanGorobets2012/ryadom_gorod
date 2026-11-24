@@ -58,10 +58,13 @@ Node.js/npm в этом окружении не установлены, сбор
 
 ## 5. Git
 
-- Основная ветка: `main`.
-- Remote `origin` настроен, но `git ls-remote origin` не возвращает refs: **репозиторий на GitHub фактически пуст, push ещё не делался**.
-- Vercel-проект **не подключён к Git**: `git push` не запускает деплой. Не обещай пользователю деплой через push, пока интеграция не настроена.
-- Не коммить `opencode.jsonc` без явного запроса: это локальная конфигурация агента.
+- Основная ветка: `main`, remote `origin` = `https://github.com/IvanGorobets2012/ryadom_gorod.git`.
+- Репозиторий **публичный**, все коммиты запушены (первый push был 24.11.2026). `git ls-remote origin` должен возвращать `refs/heads/main`. Раз публичный — **никаких секретов в коде и коммитах**: ни `service_role`, ни токенов, ни паролей. Publishable-ключ Supabase и админ-UUID секретами не являются.
+- Авторизация push: Git Credential Manager, токен лежит в Windows Credential Manager (`LegacyGeneric:target=git:https://github.com`). Проверить: `cmdkey /list | Select-String github`.
+- Вход через браузер в GCM у этого аккаунта **не работает**: GitHub → «Continue with Google» → Google отклоняет вход. Используй fine-grained PAT (`Contents: Read and write`, только репозиторий `ryadom_gorod`) и вставляй его в окно GCM или через `git credential approve`.
+- Если вставка в PowerShell не работает (старый `conhost`), забирай токен из буфера: `$p = (Get-Clipboard).Trim()` и передавай в `git credential approve`.
+- Vercel-проект **не подключён к Git**: `git push` не запускает деплой. Не обещай деплой через push, пока интеграция не настроена — деплой только через Vercel MCP (раздел 6).
+- `opencode.jsonc` закоммичен (секретов в нём нет — только URL MCP). Если добавляешь туда токены или env — сначала убери файл из индекса (`git rm --cached`) и внеси в `.gitignore`.
 
 ## 6. Деплой на Vercel
 
