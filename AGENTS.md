@@ -15,7 +15,9 @@
 ## 2. Структура
 
 ```
-index.html            весь сайт: разметка, стили, скрипты, данные мест
+index.html            весь сайт: разметка, стили, скрипты, данные мест, SEO-мета и JSON-LD
+robots.txt            разрешает обход и указывает на sitemap.xml
+sitemap.xml           карта сайта (один URL, lastmod — дата обновления контента)
 supabase_schema.sql   таблицы reviews / review_votes, индексы, RLS-политики
 README.md             краткое описание и стек
 opencode.jsonc        локальный конфиг OpenCode с Vercel MCP (не часть сайта)
@@ -86,23 +88,26 @@ Vercel CLI, Node.js и npm недоступны, Git-интеграции нет
 
 Порядок:
 
-1. Посчитать SHA1 и размер `index.html`:
+1. Посчитать SHA1 и размер всех деплоящихся файлов (`index.html`, `robots.txt`, `sitemap.xml`):
 
    ```powershell
-   (Get-FileHash index.html -Algorithm SHA1).Hash.ToLower()
-   (Get-Item index.html).Length
+   foreach ($f in @('index.html','robots.txt','sitemap.xml')) {
+     $i = Get-Item $f
+     "$f sha1=" + (Get-FileHash $f -Algorithm SHA1).Hash.ToLower() + " size=" + $i.Length
+   }
    ```
 
-2. В Code Mode прочитать файл. Прямого доступа к ФС в `execute` нет, поэтому поднять одноразовый loopback-сервер и забрать файл через `fetch`. Готовый скрипт: `%TEMP%\opencode\serve-index.ps1` (TcpListener на `127.0.0.1:18791`, отдаёт `index.html` и завершается). Запуск:
+2. В Code Mode прочитать файлы. Прямого доступа к ФС в `execute` нет, поэтому поднять одноразовый loopback-сервер и забрать их через `fetch`. Готовый скрипт: `%TEMP%\opencode\serve-files.ps1` (TcpListener на `127.0.0.1:18791`, отдаёт три файла по запрошенному пути и завершается). Запуск:
 
    ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\opencode\serve-index.ps1"
+   powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\opencode\serve-files.ps1"
    ```
 
 3. В `execute`:
 
    ```js
-   const html = await (await fetch("http://127.0.0.1:18791/index.html")).text();
+   // для каждого из трёх файлов:
+   const text = await (await fetch("http://127.0.0.1:18791/index.html")).text();
    // UTF-8 → байты → base64 (TextEncoder/crypto в runtime недоступны — кодируй вручную)
    await tools.vercel.upload_file({
      teamId: "team_FX1837kVIi5wa1Eya1rK9Nry",
@@ -116,7 +121,11 @@ Vercel CLI, Node.js и npm недоступны, Git-интеграции нет
        name: "gorod-ryadom-chisinau",
        project: "prj_oIoRfi2fIkem2usvYOOILMfP2tor",
        target: "production",
-       files: [{ file: "index.html", sha: "<sha1>", size: <bytes> }]
+       files: [
+         { file: "index.html", sha: "<sha1>", size: <bytes> },
+         { file: "robots.txt", sha: "<sha1>", size: <bytes> },
+         { file: "sitemap.xml", sha: "<sha1>", size: <bytes> }
+       ]
      }
    });
    ```
@@ -132,16 +141,33 @@ Vercel CLI, Node.js и npm недоступны, Git-интеграции нет
 - [ ] 7 кнопок районов (включая Рышкановку), есть `#suggestBtn`.
 - [ ] В браузере после `reload({ ignoreCache: true })`: 0 ошибок в консоли, 0 запросов со статусом ≥ 400, 0 битых `img`.
 - [ ] Выборочно открыть модалку места, фильтры и поиск.
+- [ ] `<title>` содержит «Куда сходить в Кишинёве», есть `description`, `canonical`, `og:*`.
+- [ ] JSON-LD валиден: `"@type":"ListItem"` ровно 22 штуки (см. раздел 8).
+- [ ] `https://gorod-ryadom-chisinau.vercel.app/robots.txt` и `/sitemap.xml` отдают `200`.
 
 ## 7. Известные особенности и подводные камни
 
 - Прод может отставать от локального файла: деплой ручной, Git-интеграции нет. Всегда сверяй число карточек на проде с локальным `index.html`.
 - Избранное и отзывы привязаны к названию места (`h3`). Переименование места ломает сохранённое избранное и старые отзывы.
 - Фото — внешние URL; проверяй доступность перед деплоем (429 у Wikimedia бывает временным, 404 — реальная ошибка).
-- `opencode.jsonc` и `AGENTS.md` не входят в деплой; деплоится только `index.html`.
+- `opencode.jsonc` и `AGENTS.md` не входят в деплой; деплоятся `index.html`, `robots.txt`, `sitemap.xml`.
 - Smart App Control блокирует неподписанные exe. Не пытайся обойти политику; используй встроенный браузер.
 
-## 8. Актуализация этого файла
+## 8. SEO
+
+Цель: сайт должен находиться по запросам «куда сходить в Кишинёве», «что посмотреть в Кишинёве», «кофейни Кишинёва», «парки Кишинёва».
+
+- **`<title>`** — главный ключ впереди, бренд в конце: `Куда сходить в Кишинёве — 22 проверенных места | Город рядом`. Не возвращать «гид по Кишинёву»: такой запрос никто не вводит.
+- **`description`** — 150–160 символов, с ключом и конкретикой (адреса, часы, отзывы).
+- **H1** остаётся имиджевым («Кишинёв, который рядом»), ключ живёт в `lead`-абзаце и в `<h2>Куда сходить в Кишинёве</h2>` перед сеткой карточек.
+- **Canonical** — всегда `https://gorod-ryadom-chisinau.vercel.app/`.
+- **Open Graph / Twitter** — `og:image` берётся с Unsplash (фото из hero), ширина 1200. Это то, что показывается при пересылке ссылки в Telegram/WhatsApp.
+- **JSON-LD** — `WebSite` + `CollectionPage` + `ItemList` на 22 места. При добавлении/удалении/переименовании места обязательно правь `numberOfItems` и `itemListElement`, иначе разметка разойдётся с содержимым (риск ручных санкций).
+- **`robots.txt` / `sitemap.xml`** — статика в корне. При обновлении контента меняй `<lastmod>` в `sitemap.xml`.
+- После деплоя: проверять `https://gorod-ryadom-chisinau.vercel.app/robots.txt` и `/sitemap.xml` (200), а также что title на проде совпадает с локальным.
+- Индексацию ускоряет Google Search Console: добавить домен, отправить `sitemap.xml`. Это разовое действие пользователя, агентом не автоматизируется.
+
+## 9. Актуализация этого файла
 
 Обновляй `AGENTS.md`, когда:
 

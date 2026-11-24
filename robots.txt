@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gorod-ryadom-chisinau.vercel.app/sitemap.xml
